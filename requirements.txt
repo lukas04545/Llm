@@ -1,6 +1,23 @@
-# Core dependency. PyTorch 2.x enables fast (flash) attention and torch.compile,
-# but the code falls back gracefully on older versions / CPU-only installs.
+# --- core (required) ---
+# Everything except quantization backends and web streaming works with just
+# torch. PyTorch 2.x enables fast (flash) attention and torch.compile; the code
+# falls back gracefully on older versions / CPU-only installs.
 torch>=2.0
 
-# Used only by scripts/prepare_data.py to download the sample corpus.
+# Used by scripts/prepare_data.py and scripts/fetch_web.py to download text.
 requests>=2.25
+
+# --- optional extras ---
+# Install the ones you need:
+#
+#   Web-scale streaming (train.py --stream=fineweb):
+#       pip install datasets
+#
+#   GPT-2 BPE tokenizer (--tokenizer=gpt2), recommended for streaming web text:
+#       pip install tiktoken
+#
+#   int4 weight-only quantization (generate.py --quantize=int4), CPU + CUDA:
+#       pip install torchao
+#
+#   FP4 / NF4 4-bit quantization (--quantize=fp4|nf4), CUDA / Colab only:
+#       pip install bitsandbytes
