@@ -16,6 +16,9 @@ requests>=2.25
 #   GPT-2 BPE tokenizer (--tokenizer=gpt2), recommended for streaming web text:
 #       pip install tiktoken
 #
+#   DeepSeek tokenizer for top-k logprob distillation (distill.py, --tokenizer=deepseek):
+#       pip install transformers
+#
 #   int4 weight-only quantization (generate.py --quantize=int4), CPU + CUDA:
 #       pip install torchao
 #

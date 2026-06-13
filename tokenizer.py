@@ -180,12 +180,71 @@ class GPT2Tokenizer:
 
 
 # --------------------------------------------------------------------------- #
+# Hugging Face tokenizer (e.g. DeepSeek) -- for cross-model distillation
+# --------------------------------------------------------------------------- #
+class HFTokenizer:
+    """Wraps a pretrained Hugging Face tokenizer. Requires `transformers`.
+
+    Using the *teacher's* tokenizer (e.g. DeepSeek's) makes the student's token
+    ids line up with the teacher's, which is what enables logprob distillation
+    (see distill.py). Note the large vocab inflates the embedding table.
+    """
+
+    kind = "deepseek"
+    DEFAULT_REPO = "deepseek-ai/DeepSeek-V3"
+
+    def __init__(self, repo: str | None = None):
+        try:
+            from transformers import AutoTokenizer
+        except ImportError as e:  # pragma: no cover
+            raise ImportError(
+                "The 'deepseek' tokenizer needs transformers. "
+                "Install with: pip install transformers"
+            ) from e
+        self.repo = repo or self.DEFAULT_REPO
+        self.tok = AutoTokenizer.from_pretrained(self.repo, trust_remote_code=True)
+
+    @property
+    def vocab_size(self) -> int:
+        return len(self.tok)
+
+    def encode(self, text: str) -> list[int]:
+        return self.tok.encode(text, add_special_tokens=False)
+
+    def decode(self, ids: list[int]) -> str:
+        return self.tok.decode(ids)
+
+    def token_to_id(self, token: str):
+        """Best-effort map an API logprob token string to a single id (or None)."""
+        ids = self.tok.encode(token, add_special_tokens=False)
+        if len(ids) == 1:
+            return ids[0]
+        tid = self.tok.convert_tokens_to_ids(token)
+        unk = self.tok.unk_token_id
+        return tid if (tid is not None and tid != unk) else None
+
+    def save(self, path: str | Path) -> None:
+        self.save_config(path, self.repo)
+
+    @staticmethod
+    def save_config(path: str | Path, repo: str | None) -> None:
+        """Write the tokenizer metadata without instantiating transformers."""
+        _write_json(path, {"kind": HFTokenizer.kind, "repo": repo or HFTokenizer.DEFAULT_REPO})
+
+    @classmethod
+    def load(cls, path: str | Path) -> "HFTokenizer":
+        return cls(_read_json(path).get("repo"))
+
+
+# --------------------------------------------------------------------------- #
 # Factory helpers
 # --------------------------------------------------------------------------- #
 def load_tokenizer(path: str | Path):
     """Restore a tokenizer of whatever kind was saved at `path`."""
     kind = _read_json(path).get("kind", "char")
-    return {"char": CharTokenizer, "bpe": BPETokenizer, "gpt2": GPT2Tokenizer}[kind].load(path)
+    registry = {"char": CharTokenizer, "bpe": BPETokenizer,
+                "gpt2": GPT2Tokenizer, "deepseek": HFTokenizer}
+    return registry[kind].load(path)
 
 
 def build_tokenizer(kind: str, text: str | None, vocab_size: int):
@@ -196,6 +255,8 @@ def build_tokenizer(kind: str, text: str | None, vocab_size: int):
         return BPETokenizer.train(text or "", vocab_size)
     if kind == "gpt2":
         return GPT2Tokenizer()
+    if kind == "deepseek":
+        return HFTokenizer()
     raise ValueError(f"Unknown tokenizer kind: {kind}")
 
 

@@ -166,6 +166,27 @@ Useful flags: `--prompt` (explicit instruction overriding `--topic`), `--model`
 `--append` (grow a corpus over multiple runs), `--dry_run` (preview the request
 without calling the API). It's OpenAI-compatible and uses only `requests`.
 
+### Top-k logprob distillation (advanced)
+
+For a stronger signal than text alone, match DeepSeek's tokenizer and learn from
+the teacher's **top-k next-token distribution** (its `top_logprobs`) with a KL
+soft-target loss. Soft targets tell the student how confident the teacher was and
+what the runner-up tokens were.
+
+```bash
+pip install transformers                     # DeepSeek tokenizer
+export DEEPSEEK_API_KEY=sk-...
+python scripts/distill_collect.py --num_docs=300 --out=out/distill.pt
+python distill.py --data=out/distill.pt --max_iters=3000 --alpha=0.5 --temp=1.0
+python generate.py --prompt="Once upon a time"
+```
+
+`distill.py` minimizes `alpha * CE(hard label) + (1-alpha) * T² * KL(teacher_topk
+|| student_topk)`. Caveats: the API returns only the top ~20 tokens (so the KL is
+over the teacher's top-k, not the full vocab), DeepSeek's ~128k vocab inflates the
+student's embedding table, and it costs more API calls than plain text generation.
+`--tokenizer=deepseek` is also available for the text-only path.
+
 ## Quantization (low-RAM, fast inference)
 
 Quantization is applied to a **trained** model for cheaper generation:
