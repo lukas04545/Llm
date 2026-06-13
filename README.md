@@ -141,6 +141,31 @@ python train.py
 > of real web text, which is exactly how large models are trained. Make the model
 > bigger (`--n_layer/--n_head/--n_embd`) to absorb more of it.
 
+## Distill from DeepSeek (API-generated training data)
+
+Use a strong model as a **teacher** that writes a custom corpus, then train the
+small GPT on it. A remote API can't backprop into our model (no gradients, and
+the tokenizers differ), but it can generate excellent, on-topic text —
+"distillation by data":
+
+```bash
+export DEEPSEEK_API_KEY=sk-...           # https://platform.deepseek.com
+python scripts/deepseek_gen.py --topic="bedtime stories" --num_docs=300
+python train.py --data_path=data/deepseek.txt
+```
+
+Or tokenize straight to memmap `.bin` and let `train.py` auto-detect it:
+
+```bash
+python scripts/deepseek_gen.py --num_docs=500 --bin --tokenizer=bpe --vocab_size=1024
+python train.py
+```
+
+Useful flags: `--prompt` (explicit instruction overriding `--topic`), `--model`
+(`deepseek-chat` / `deepseek-reasoner`), `--max_tokens`, `--temperature`,
+`--append` (grow a corpus over multiple runs), `--dry_run` (preview the request
+without calling the API). It's OpenAI-compatible and uses only `requests`.
+
 ## Quantization (low-RAM, fast inference)
 
 Quantization is applied to a **trained** model for cheaper generation:
