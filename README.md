@@ -208,10 +208,10 @@ python scripts/grow.py --add=8 --ckpt=out/ckpt.pt   # +8 identity layers
 python train.py --init_from=out/ckpt.pt --data_path=data/mydata.txt
 ```
 
-- **`import_hf.py`** converts a Hugging Face Llama-arch model (verified: SmolLM
-  135M/360M, TinyLlama-1.1B) into a checkpoint + tokenizer. Models with QKV bias
-  (Qwen2) or a custom head_dim are rejected with a clear message rather than
-  loaded incorrectly.
+- **`import_hf.py`** converts a Hugging Face model into a checkpoint + tokenizer.
+  Supported: bias-free Llama-arch (SmolLM 135M/360M, TinyLlama-1.1B) and **Qwen2**
+  (Qwen2.5-0.5B/1.5B, which add q/k/v bias). Models with o_proj/MLP bias or a
+  custom head_dim are rejected with a clear message rather than loaded wrong.
 - **`train.py --init_from=ckpt.pt`** fine-tunes from any checkpoint, reusing its
   tokenizer so the vocab matches. Use a small learning rate (e.g. `2e-5`).
 - **`grow.py --add=N`** inserts N new Transformer blocks with zeroed output

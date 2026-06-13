@@ -36,7 +36,8 @@ class GPTConfig:
     n_kv_head: int = 0             # key/value heads (GQA); 0 -> equal to n_head
     n_embd: int = 128              # embedding / hidden dimension
     dropout: float = 0.1           # dropout probability
-    bias: bool = False             # use bias in Linear / norm layers
+    bias: bool = False             # use bias in o_proj / MLP / LayerNorm
+    qkv_bias: bool = False         # use bias in q/k/v projections (e.g. Qwen2)
     norm: str = "rms"              # "rms" | "layer"
     mlp: str = "swiglu"            # "swiglu" | "gelu"
     use_rope: bool = True          # rotary position embeddings
@@ -110,10 +111,11 @@ class CausalSelfAttention(nn.Module):
         self.dropout = config.dropout
         self.use_rope = config.use_rope
 
-        # Separate Q / K / V projections (K/V are narrower under GQA).
-        self.q_proj = nn.Linear(config.n_embd, self.n_head * self.head_dim, bias=config.bias)
-        self.k_proj = nn.Linear(config.n_embd, self.n_kv_head * self.head_dim, bias=config.bias)
-        self.v_proj = nn.Linear(config.n_embd, self.n_kv_head * self.head_dim, bias=config.bias)
+        # Separate Q / K / V projections (K/V are narrower under GQA). Some models
+        # (Qwen2) add bias to q/k/v but not to the output projection.
+        self.q_proj = nn.Linear(config.n_embd, self.n_head * self.head_dim, bias=config.qkv_bias)
+        self.k_proj = nn.Linear(config.n_embd, self.n_kv_head * self.head_dim, bias=config.qkv_bias)
+        self.v_proj = nn.Linear(config.n_embd, self.n_kv_head * self.head_dim, bias=config.qkv_bias)
         self.o_proj = nn.Linear(self.n_head * self.head_dim, config.n_embd, bias=config.bias)
 
         self.attn_dropout = nn.Dropout(config.dropout)

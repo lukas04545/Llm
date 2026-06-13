@@ -38,10 +38,18 @@ def gpt_config_from_hf(hf_config) -> GPTConfig:
             f"Model uses a custom head_dim ({explicit_head_dim} != {n_embd}/{n_head}); "
             f"this loader assumes head_dim == hidden/num_heads."
         )
-    if getattr(c, "attention_bias", False) or getattr(c, "mlp_bias", False):
+
+    # Bias handling: Llama/SmolLM/TinyLlama are bias-free; Qwen2 adds bias on
+    # q/k/v but not on o_proj/MLP. Anything else (o_proj or MLP bias) is rejected.
+    model_type = getattr(c, "model_type", "")
+    attn_bias = getattr(c, "attention_bias", False)
+    mlp_bias = getattr(c, "mlp_bias", False)
+    qkv_bias = (model_type == "qwen2") or attn_bias
+    o_bias = attn_bias and model_type != "qwen2"
+    if mlp_bias or o_bias:
         raise ValueError(
-            "Model has attention/MLP bias (e.g. Qwen2). This loader supports "
-            "bias-free Llama-arch models (SmolLM, TinyLlama)."
+            "Model uses o_proj/MLP bias, which this loader doesn't support. "
+            "Supported: bias-free Llama-arch (SmolLM, TinyLlama) and Qwen2 (q/k/v bias)."
         )
 
     return GPTConfig(
@@ -56,6 +64,7 @@ def gpt_config_from_hf(hf_config) -> GPTConfig:
         norm="rms",
         mlp="swiglu",
         use_rope=True,
+        qkv_bias=qkv_bias,
         norm_eps=getattr(c, "rms_norm_eps", 1e-5),
         rope_theta=float(getattr(c, "rope_theta", 10000.0)),
         mlp_hidden=c.intermediate_size,
@@ -87,6 +96,11 @@ def convert_llama_state_dict(hf_sd: dict, cfg: GPTConfig) -> dict:
     for i in range(cfg.n_layer):
         for hf_suffix, our_suffix in pairs.items():
             sd[f"transformer.h.{i}.{our_suffix}"] = hf_sd[f"model.layers.{i}.{hf_suffix}"]
+        # Qwen2-style q/k/v biases, when present.
+        if cfg.qkv_bias:
+            for proj in ("q", "k", "v"):
+                bkey = f"model.layers.{i}.self_attn.{proj}_proj.bias"
+                sd[f"transformer.h.{i}.attn.{proj}_proj.bias"] = hf_sd[bkey]
     return sd
 
 
@@ -116,7 +130,8 @@ def model_args_from_config(cfg: GPTConfig) -> dict:
     return dict(
         vocab_size=cfg.vocab_size, block_size=cfg.block_size, n_layer=cfg.n_layer,
         n_head=cfg.n_head, n_kv_head=cfg.n_kv_head, n_embd=cfg.n_embd,
-        dropout=cfg.dropout, bias=cfg.bias, norm=cfg.norm, mlp=cfg.mlp,
-        use_rope=cfg.use_rope, norm_eps=cfg.norm_eps, rope_theta=cfg.rope_theta,
-        mlp_hidden=cfg.mlp_hidden, tie_embeddings=cfg.tie_embeddings,
+        dropout=cfg.dropout, bias=cfg.bias, qkv_bias=cfg.qkv_bias, norm=cfg.norm,
+        mlp=cfg.mlp, use_rope=cfg.use_rope, norm_eps=cfg.norm_eps,
+        rope_theta=cfg.rope_theta, mlp_hidden=cfg.mlp_hidden,
+        tie_embeddings=cfg.tie_embeddings,
     )
