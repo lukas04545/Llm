@@ -1,0 +1,6 @@
+# Core dependency. PyTorch 2.x enables fast (flash) attention and torch.compile,
+# but the code falls back gracefully on older versions / CPU-only installs.
+torch>=2.0
+
+# Used only by scripts/prepare_data.py to download the sample corpus.
+requests>=2.25

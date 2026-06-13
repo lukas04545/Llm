@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# Training artifacts
+out/
+*.pt
+*.ckpt
+
+# Large downloaded corpora (the tiny sample in data/ is kept)
+data/*.txt
+!data/sample.txt
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
