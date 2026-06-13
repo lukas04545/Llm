@@ -23,12 +23,17 @@ from tokenizer import build_tokenizer, load_tokenizer
 # 1. In-memory
 # --------------------------------------------------------------------------- #
 def load_corpus(path: str, val_split: float, tokenizer_kind: str = "char",
-                vocab_size: int = 512):
-    """Read text, build a tokenizer, and split into train/val id tensors."""
+                vocab_size: int = 512, tokenizer=None):
+    """Read text, build a tokenizer, and split into train/val id tensors.
+
+    If `tokenizer` is given (e.g. when fine-tuning a pretrained model), it is
+    reused as-is instead of fitting a new one.
+    """
     with open(path, "r", encoding="utf-8") as f:
         text = f.read()
 
-    tokenizer = build_tokenizer(tokenizer_kind, text, vocab_size)
+    if tokenizer is None:
+        tokenizer = build_tokenizer(tokenizer_kind, text, vocab_size)
     data = torch.tensor(tokenizer.encode(text), dtype=torch.long)
 
     n_val = int(len(data) * val_split)

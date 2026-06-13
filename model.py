@@ -40,6 +40,10 @@ class GPTConfig:
     norm: str = "rms"              # "rms" | "layer"
     mlp: str = "swiglu"            # "swiglu" | "gelu"
     use_rope: bool = True          # rotary position embeddings
+    norm_eps: float = 1e-5         # RMSNorm / LayerNorm epsilon
+    rope_theta: float = 10000.0    # RoPE base frequency (match the pretrained model)
+    mlp_hidden: int = 0            # SwiGLU hidden dim; 0 -> auto (~8/3 * n_embd)
+    tie_embeddings: bool = True    # tie token embedding and output head weights
 
     def __post_init__(self):
         if self.n_kv_head == 0:
@@ -65,8 +69,8 @@ class RMSNorm(nn.Module):
 
 def make_norm(config: GPTConfig) -> nn.Module:
     if config.norm == "rms":
-        return RMSNorm(config.n_embd)
-    return nn.LayerNorm(config.n_embd, bias=config.bias)
+        return RMSNorm(config.n_embd, config.norm_eps)
+    return nn.LayerNorm(config.n_embd, eps=config.norm_eps, bias=config.bias)
 
 
 # ----------------------------- RoPE helpers ------------------------------ #
@@ -171,8 +175,11 @@ class SwiGLU(nn.Module):
         super().__init__()
         # Size the hidden dim to ~8/3 * n_embd so the 3 matrices match a 4x
         # GELU MLP in parameter count. Round to a multiple of 32.
-        hidden = int(8 * config.n_embd / 3)
-        hidden = 32 * ((hidden + 31) // 32)
+        if config.mlp_hidden:
+            hidden = config.mlp_hidden
+        else:
+            hidden = int(8 * config.n_embd / 3)
+            hidden = 32 * ((hidden + 31) // 32)
         self.w1 = nn.Linear(config.n_embd, hidden, bias=config.bias)  # gate
         self.w3 = nn.Linear(config.n_embd, hidden, bias=config.bias)  # up
         self.w2 = nn.Linear(hidden, config.n_embd, bias=config.bias)  # down
@@ -232,13 +239,15 @@ class GPT(nn.Module):
         self.transformer = nn.ModuleDict(modules)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
-        # Weight tying between the token embedding and the output head.
-        self.transformer.wte.weight = self.lm_head.weight
+        # Weight tying between the token embedding and the output head (optional;
+        # some pretrained models, e.g. TinyLlama, use untied weights).
+        if config.tie_embeddings:
+            self.transformer.wte.weight = self.lm_head.weight
 
         # Precompute rotary tables (registered as buffers, not parameters).
         if config.use_rope:
             head_dim = config.n_embd // config.n_head
-            cos, sin = precompute_rope(head_dim, config.block_size)
+            cos, sin = precompute_rope(head_dim, config.block_size, base=config.rope_theta)
             self.register_buffer("rope_cos", cos, persistent=False)
             self.register_buffer("rope_sin", sin, persistent=False)
 

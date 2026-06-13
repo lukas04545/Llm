@@ -187,6 +187,41 @@ over the teacher's top-k, not the full vocab), DeepSeek's ~128k vocab inflates t
 student's embedding table, and it costs more API calls than plain text generation.
 `--tokenizer=deepseek` is also available for the text-only path.
 
+## Build on an open-weight model (fine-tune & grow)
+
+Instead of training from scratch, start from a pretrained **Llama-family** model
+— this repo's default architecture (RoPE + RMSNorm + SwiGLU + GQA, bias-free) is
+deliberately Llama-shaped, so the weights map on cleanly.
+
+```bash
+pip install transformers
+# 1. Import an open-weight model into this repo's format
+python scripts/import_hf.py --repo=HuggingFaceTB/SmolLM-135M
+python generate.py --prompt="The meaning of life is"
+
+# 2. Fine-tune it on your own data
+python train.py --init_from=out/ckpt.pt --data_path=data/mydata.txt \
+    --learning_rate=2e-5 --max_iters=2000
+
+# 3. (Optional) Grow it deeper, then keep training
+python scripts/grow.py --add=8 --ckpt=out/ckpt.pt   # +8 identity layers
+python train.py --init_from=out/ckpt.pt --data_path=data/mydata.txt
+```
+
+- **`import_hf.py`** converts a Hugging Face Llama-arch model (verified: SmolLM
+  135M/360M, TinyLlama-1.1B) into a checkpoint + tokenizer. Models with QKV bias
+  (Qwen2) or a custom head_dim are rejected with a clear message rather than
+  loaded incorrectly.
+- **`train.py --init_from=ckpt.pt`** fine-tunes from any checkpoint, reusing its
+  tokenizer so the vocab matches. Use a small learning rate (e.g. `2e-5`).
+- **`grow.py --add=N`** inserts N new Transformer blocks with zeroed output
+  projections (LLaMA-Pro style), so the larger model starts as the *exact same
+  function* and learns to use the extra depth during further training.
+
+> A pretrained base is the realistic way to get a capable model without
+> frontier-scale compute (see the GPT-2/3/4 discussion above): borrow open
+> weights, then specialize them with fine-tuning and/or distillation.
+
 ## Quantization (low-RAM, fast inference)
 
 Quantization is applied to a **trained** model for cheaper generation:

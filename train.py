@@ -62,11 +62,15 @@ def get_lr(it: int, cfg: TrainConfig) -> float:
     return cfg.min_lr + coeff * (cfg.learning_rate - cfg.min_lr)
 
 
-def build_data(cfg: TrainConfig, device: str):
-    """Return (tokenizer, train_batch_fn, val_batch_fn) for the chosen source."""
+def build_data(cfg: TrainConfig, device: str, forced_tokenizer=None):
+    """Return (tokenizer, train_batch_fn, val_batch_fn) for the chosen source.
+
+    `forced_tokenizer` (set when fine-tuning a pretrained checkpoint) pins the
+    vocabulary so the data is tokenized to match the loaded model.
+    """
     # --- streaming web-scale source ---
     if cfg.stream:
-        tokenizer = _streaming_tokenizer(cfg)
+        tokenizer = forced_tokenizer or _streaming_tokenizer(cfg)
         hf_config = cfg.hf_config or None
         train_src = StreamingDataset(cfg.stream, tokenizer, cfg.block_size,
                                      cfg.batch_size, device, hf_config=hf_config,
@@ -100,7 +104,8 @@ def build_data(cfg: TrainConfig, device: str):
             f"or stream with --stream=fineweb."
         )
     tokenizer, train_data, val_data = load_corpus(
-        cfg.data_path, cfg.val_split, cfg.tokenizer, cfg.vocab_size
+        cfg.data_path, cfg.val_split, cfg.tokenizer, cfg.vocab_size,
+        tokenizer=forced_tokenizer,
     )
     print(f"Corpus: {len(train_data) + len(val_data):,} tokens | "
           f"tokenizer: {tokenizer.kind} | vocab size: {tokenizer.vocab_size}")
@@ -192,18 +197,37 @@ def main(argv: list[str]) -> None:
 
     os.makedirs(cfg.out_dir, exist_ok=True)
 
+    # --- fine-tuning: load a checkpoint's args + tokenizer to pin the vocab ---
+    init_ckpt = None
+    forced_tokenizer = None
+    if cfg.init_from:
+        print(f"Fine-tuning from checkpoint: {cfg.init_from}")
+        init_ckpt = torch.load(cfg.init_from, map_location="cpu")
+        tok_path = os.path.join(os.path.dirname(cfg.init_from) or ".", "tokenizer.json")
+        if os.path.exists(tok_path):
+            forced_tokenizer = load_tokenizer(tok_path)
+
     # --- data ---
-    tokenizer, train_batch, val_batch = build_data(cfg, device)
+    tokenizer, train_batch, val_batch = build_data(cfg, device, forced_tokenizer)
     tokenizer.save(os.path.join(cfg.out_dir, "tokenizer.json"))
 
     # --- model ---
-    model_args = dict(
-        vocab_size=tokenizer.vocab_size, block_size=cfg.block_size,
-        n_layer=cfg.n_layer, n_head=cfg.n_head, n_kv_head=cfg.n_kv_head,
-        n_embd=cfg.n_embd, dropout=cfg.dropout, bias=cfg.bias,
-        norm=cfg.norm, mlp=cfg.mlp, use_rope=cfg.use_rope,
-    )
+    if init_ckpt is not None:
+        model_args = init_ckpt["model_args"]
+        assert model_args["vocab_size"] == tokenizer.vocab_size, (
+            f"Tokenizer vocab ({tokenizer.vocab_size}) != checkpoint vocab "
+            f"({model_args['vocab_size']}). Use the checkpoint's tokenizer.")
+        cfg.block_size = model_args["block_size"]
+    else:
+        model_args = dict(
+            vocab_size=tokenizer.vocab_size, block_size=cfg.block_size,
+            n_layer=cfg.n_layer, n_head=cfg.n_head, n_kv_head=cfg.n_kv_head,
+            n_embd=cfg.n_embd, dropout=cfg.dropout, bias=cfg.bias,
+            norm=cfg.norm, mlp=cfg.mlp, use_rope=cfg.use_rope,
+        )
     model = GPT(GPTConfig(**model_args)).to(device)
+    if init_ckpt is not None:
+        model.load_state_dict(init_ckpt["model"])
     model.grad_checkpoint = cfg.grad_checkpoint
     print(f"Model parameters: {model.num_params() / 1e6:.2f}M"
           + (" | grad checkpointing ON" if cfg.grad_checkpoint else ""))

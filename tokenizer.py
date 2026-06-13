@@ -190,7 +190,7 @@ class HFTokenizer:
     (see distill.py). Note the large vocab inflates the embedding table.
     """
 
-    kind = "deepseek"
+    kind = "hf"
     DEFAULT_REPO = "deepseek-ai/DeepSeek-V3"
 
     def __init__(self, repo: str | None = None):
@@ -242,8 +242,8 @@ class HFTokenizer:
 def load_tokenizer(path: str | Path):
     """Restore a tokenizer of whatever kind was saved at `path`."""
     kind = _read_json(path).get("kind", "char")
-    registry = {"char": CharTokenizer, "bpe": BPETokenizer,
-                "gpt2": GPT2Tokenizer, "deepseek": HFTokenizer}
+    registry = {"char": CharTokenizer, "bpe": BPETokenizer, "gpt2": GPT2Tokenizer,
+                "hf": HFTokenizer, "deepseek": HFTokenizer}  # "deepseek" kept for back-compat
     return registry[kind].load(path)
 
 
@@ -255,7 +255,7 @@ def build_tokenizer(kind: str, text: str | None, vocab_size: int):
         return BPETokenizer.train(text or "", vocab_size)
     if kind == "gpt2":
         return GPT2Tokenizer()
-    if kind == "deepseek":
+    if kind in ("hf", "deepseek"):
         return HFTokenizer()
     raise ValueError(f"Unknown tokenizer kind: {kind}")
 

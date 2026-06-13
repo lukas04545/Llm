@@ -14,6 +14,7 @@ class TrainConfig:
     # --- data ---
     data_path: str = "data/input.txt"   # plain-text training corpus
     out_dir: str = "out"                # where checkpoints + tokenizer are saved
+    init_from: str = ""                 # checkpoint to fine-tune from ("" = train from scratch)
 
     # --- web-scale streaming (optional) ---
     stream: str = ""                    # preset (fineweb/c4/openwebtext/wikitext)
