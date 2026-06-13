@@ -39,6 +39,7 @@ class TrainConfig:
     use_rope: bool = True               # rotary embeddings (drops learned wpe table)
 
     # --- optimization ---
+    optimizer: str = "adamw"            # "adamw" | "adamw8bit" (needs bitsandbytes)
     batch_size: int = 32                # micro-batch size (per accumulation step)
     grad_accum_steps: int = 1           # effective batch = batch_size * this
     learning_rate: float = 3e-4
@@ -65,6 +66,7 @@ class TrainConfig:
     seed: int = 1337
     compile: bool = False               # torch.compile (PyTorch 2.x, CUDA)
     grad_checkpoint: bool = False       # gradient checkpointing (less activation RAM)
+    prefetch: bool = True               # async data prefetch on CUDA (overlap I/O + compute)
 
 
 def parse_overrides(config: TrainConfig, argv: list[str]) -> TrainConfig:

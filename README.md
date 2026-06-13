@@ -63,8 +63,13 @@ python train.py --device=cuda --dtype=bf16 \
 | Gradient accumulation | `--grad_accum_steps=4` | Large *effective* batch with small per-step memory. |
 | Gradient checkpointing | `--grad_checkpoint=true` | Big cut in activation memory (fit bigger models). |
 | Compilation | `--compile=true` | Fuses kernels via `torch.compile` (PyTorch 2.x + CUDA). |
+| 8-bit optimizer | `--optimizer=adamw8bit` | Halves optimizer-state memory, often faster (needs bitsandbytes + CUDA). |
+| Async prefetch | `--prefetch=true` (default) | Overlaps the next batch's host→GPU copy with compute. CUDA only. |
 | Smaller KV cache | `--n_kv_head=2` | GQA shrinks attention memory at inference. |
 | Memory-mapped data | (automatic, see below) | Large corpora never fully load into RAM. |
+
+On CUDA, `cudnn.benchmark` is enabled automatically to autotune kernels for the
+fixed batch shapes.
 
 The KV cache is on by default for `generate.py`; compare with `bench.py --no_cache`.
 

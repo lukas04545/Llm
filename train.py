@@ -134,6 +134,31 @@ def _streaming_tokenizer(cfg: TrainConfig):
     return build_tokenizer(cfg.tokenizer, "\n".join(sample), cfg.vocab_size)
 
 
+class CUDAPrefetcher:
+    """Prefetch the next batch on a side CUDA stream to overlap data movement
+    (host->device copy) with model compute on the default stream."""
+
+    def __init__(self, batch_fn):
+        self.batch_fn = batch_fn
+        self.stream = torch.cuda.Stream()
+        self._preload()
+
+    def _preload(self):
+        # batch_fn already issues a pinned, non_blocking copy to the GPU; running
+        # it inside the side stream lets that copy run concurrently with compute.
+        with torch.cuda.stream(self.stream):
+            self._next = self.batch_fn()
+
+    def get_batch(self):
+        torch.cuda.current_stream().wait_stream(self.stream)
+        x, y = self._next
+        # Keep the tensors alive until the default stream has consumed them.
+        x.record_stream(torch.cuda.current_stream())
+        y.record_stream(torch.cuda.current_stream())
+        self._preload()
+        return x, y
+
+
 @torch.no_grad()
 def estimate_loss(model, train_batch, val_batch, cfg, amp_ctx):
     model.eval()
@@ -162,6 +187,7 @@ def main(argv: list[str]) -> None:
         torch.cuda.manual_seed(cfg.seed)
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cudnn.benchmark = True  # autotune kernels for fixed shapes
     torch.set_float32_matmul_precision("high")
 
     os.makedirs(cfg.out_dir, exist_ok=True)
@@ -188,8 +214,15 @@ def main(argv: list[str]) -> None:
         model = torch.compile(model)
 
     optimizer = raw_model.configure_optimizers(
-        cfg.weight_decay, cfg.learning_rate, (cfg.beta1, cfg.beta2), device_type
+        cfg.weight_decay, cfg.learning_rate, (cfg.beta1, cfg.beta2), device_type,
+        optimizer=cfg.optimizer,
     )
+    if cfg.optimizer == "adamw8bit":
+        print("Using 8-bit AdamW optimizer (bitsandbytes)")
+
+    # Async prefetch overlaps the next batch's H2D copy with current compute.
+    if cfg.prefetch and device_type == "cuda":
+        train_batch = CUDAPrefetcher(train_batch).get_batch
 
     # Mixed precision: autocast for bf16/fp16; GradScaler only for fp16.
     use_amp = device_type == "cuda" and dtype in (torch.bfloat16, torch.float16)

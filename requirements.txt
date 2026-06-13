@@ -19,5 +19,6 @@ requests>=2.25
 #   int4 weight-only quantization (generate.py --quantize=int4), CPU + CUDA:
 #       pip install torchao
 #
-#   FP4 / NF4 4-bit quantization (--quantize=fp4|nf4), CUDA / Colab only:
+#   FP4 / NF4 4-bit quantization (--quantize=fp4|nf4) AND the 8-bit optimizer
+#   (--optimizer=adamw8bit), CUDA / Colab only:
 #       pip install bitsandbytes

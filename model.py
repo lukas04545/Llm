@@ -305,8 +305,14 @@ class GPT(nn.Module):
         logits = self.lm_head(x[:, [-1], :])
         return logits, new_caches
 
-    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
-        """Build an AdamW optimizer with sensible weight-decay groups."""
+    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type,
+                             optimizer="adamw"):
+        """Build an optimizer with sensible weight-decay groups.
+
+        optimizer="adamw"      -> torch.optim.AdamW (fused on CUDA when available)
+        optimizer="adamw8bit"  -> bitsandbytes 8-bit AdamW (less optimizer memory,
+                                  often faster on GPU). Requires bitsandbytes + CUDA.
+        """
         param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
         decay = [p for p in param_dict.values() if p.dim() >= 2]
         no_decay = [p for p in param_dict.values() if p.dim() < 2]
@@ -314,6 +320,16 @@ class GPT(nn.Module):
             {"params": decay, "weight_decay": weight_decay},
             {"params": no_decay, "weight_decay": 0.0},
         ]
+
+        if optimizer == "adamw8bit":
+            try:
+                import bitsandbytes as bnb
+            except ImportError as e:
+                raise ImportError(
+                    "optimizer='adamw8bit' needs bitsandbytes: pip install bitsandbytes"
+                ) from e
+            return bnb.optim.AdamW8bit(optim_groups, lr=learning_rate, betas=betas)
+
         fused_available = "fused" in torch.optim.AdamW.__init__.__code__.co_varnames
         use_fused = fused_available and device_type == "cuda"
         extra = dict(fused=True) if use_fused else dict()
