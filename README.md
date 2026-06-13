@@ -55,6 +55,26 @@ python train.py --device=cuda --dtype=bf16 \
     --batch_size=64 --grad_accum_steps=4 --max_iters=5000 --compile=true
 ```
 
+## Train on Android (Termux)
+
+You can train on a phone. PyTorch has no official Termux wheels, so a setup
+script installs a CPU build from the Termux User Repository:
+
+```bash
+pkg install git
+git clone https://github.com/lukas04545/llm.git && cd llm
+bash scripts/termux_setup.sh            # installs python + torch (CPU) for aarch64
+python scripts/prepare_data.py
+# keep it small so a phone CPU stays responsive:
+python train.py --device=cpu --n_layer=4 --n_embd=128 --block_size=64 \
+    --batch_size=8 --max_iters=2000
+python generate.py --prompt="To be"
+```
+
+Phones are CPU-only (no CUDA), so quantization/streaming extras are optional;
+the char tokenizer + small model train comfortably. Bump the size up only if
+your device has the RAM and patience.
+
 ## Train faster / use less RAM
 
 | Technique | Flag | What it does |

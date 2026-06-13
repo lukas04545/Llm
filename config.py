@@ -28,7 +28,7 @@ class TrainConfig:
 
     # --- model size (small by default; bump these up if you have a GPU) ---
     block_size: int = 128               # context length
-    n_layer: int = 256
+    n_layer: int = 16
     n_head: int = 4                     # query heads
     n_kv_head: int = 0                  # key/value heads (GQA); 0 -> equal to n_head
     n_embd: int = 128
